@@ -24,25 +24,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+          cache: 'npm'
       
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-          run_install: false
-
       - name: Install dependencies
-        run: pnpm install
-
-      - name: Check pnpm path
-        run: which pnpm && pnpm --version
+        run: npm ci
 
       - name: Build
-        run: pnpm run build
+        run: npm run build
 
       - name: Export static
-        run: pnpm run export
+        run: npm run export
       
       - name: Setup Pages
         uses: actions/configure-pages@v4
