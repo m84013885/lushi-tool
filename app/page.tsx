@@ -234,6 +234,15 @@ export default function Home() {
     }
   };
 
+  // 清除所有数据
+  const clearAllData = () => {
+    if (window.confirm('确定要清除所有数据吗？此操作不可恢复！')) {
+      setList(initialList);
+      localStorage.removeItem('hearthstone-stats');
+      alert('数据已清除');
+    }
+  };
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <header className={`fixed top-0 left-0 right-0 flex flex-col sm:flex-row items-center justify-center gap-4 p-4 bg-gray-50/95 backdrop-blur-sm border-b shadow-sm z-10 transition-transform duration-300 ${isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}`}>
@@ -262,6 +271,14 @@ export default function Home() {
             className="w-full sm:w-auto px-3 py-1 text-white bg-green-500 rounded-md hover:bg-green-600 transition-colors"
           >
             复制数据
+          </button>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={clearAllData}
+            className="w-full sm:w-auto px-3 py-1 text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors"
+          >
+            清除数据
           </button>
         </div>
       </header>
