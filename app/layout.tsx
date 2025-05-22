@@ -18,6 +18,12 @@ const faviconBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAM
 export const metadata: Metadata = {
   title: "炉石小工具",
   description: '记录你的炉石传说对战数据',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
   icons: {
     icon: [
       {
