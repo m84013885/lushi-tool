@@ -1,9 +1,27 @@
 "use client"
 
 import { useState, useEffect } from "react";
-import { PlusCircleOutlined, MinusCircleOutlined, VerticalAlignTopOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
+import { copyToClipboard } from './utils'
+import ConfirmModal from './components/confirmModal'
+import Toast from './components/toast'
+import Detail from './components/detail'
+import AddCardModal from './components/addCardModal'
+import EditCardModal from './components/editCardModal'
 
-// 初始化列表
+export const HEAR_MAP = {
+  'dl': '德鲁伊',
+  'lr': '猎人',
+  'fs': '法师',
+  'ms': '牧师',
+  'sq': '圣骑士',
+  'zd': '盗贼',
+  'sm': '萨满',
+  'ss': '术士',
+  'zs': '战士',
+  'em': '恶魔猎手',
+  'sw': '死亡骑士',
+}
+
 const initialList = [
   {
     name: "德鲁伊",
@@ -62,291 +80,453 @@ const initialList = [
   },
 ];
 
+interface Card {
+  name: string;
+  hero: string;
+  list: {
+    name: string;
+    win: number;
+    lose: number;
+  }[];
+}
+
+// 压缩数据
+const compressData = (cards: Card[]) => {
+  return cards.map(card => {
+    // 压缩每个卡组的数据
+    const compressedList = card.list
+      .map(item => {
+        // 只保存非零数据
+        if (item.win === 0 && item.lose === 0) return null;
+        return {
+          n: item.name, // 使用短键名
+          w: item.win,
+          l: item.lose
+        };
+      })
+      .filter(Boolean); // 移除空数据
+
+    return {
+      n: card.name, // 使用短键名
+      h: card.hero, // 使用短键名
+      l: compressedList // 使用短键名
+    };
+  });
+};
+
+// 解压数据
+const decompressData = (compressedCards: any[]): Card[] => {
+  return compressedCards.map(compressedCard => {
+    // 创建完整的列表，包含所有职业
+    const fullList = initialList.map(defaultItem => {
+      // 查找压缩数据中是否存在该职业的数据
+      const compressedItem = compressedCard.l.find((item: any) => item.n === defaultItem.name);
+      return compressedItem ? {
+        name: compressedItem.n,
+        win: compressedItem.w,
+        lose: compressedItem.l
+      } : defaultItem;
+    });
+
+    return {
+      name: compressedCard.n,
+      hero: compressedCard.h,
+      list: fullList
+    };
+  });
+};
+
 export default function Home() {
-  // 从 localStorage 读取数据，如果没有则使用初始数据
-  const [list, setList] = useState(() => {
+  const [cards, setCards] = useState<Card[]>(() => {
     if (typeof window !== 'undefined') {
-      const savedList = localStorage.getItem('hearthstone-stats');
-      if (savedList) {
+      const savedCards = localStorage.getItem('hearthstone-stats');
+      if (savedCards) {
         try {
-          const parsedList = JSON.parse(savedList);
-          // 验证数据格式
-          if (Array.isArray(parsedList) && parsedList.every(item => 
-            typeof item === 'object' && 
-            'name' in item && 
-            'win' in item && 
-            'lose' in item
+          const parsedCards = JSON.parse(savedCards);
+          if (Array.isArray(parsedCards) && parsedCards.every(card =>
+            typeof card === 'object' &&
+            'name' in card &&
+            'hero' in card &&
+            'list' in card &&
+            Array.isArray(card.list)
           )) {
-            return parsedList;
+            return parsedCards;
           }
         } catch (error) {
           console.error('Failed to parse saved data:', error);
         }
       }
     }
-    return initialList;
+    return [{
+      name: '默认卡组',
+      hero: '德鲁伊',
+      list: initialList
+    }];
   });
+
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [importValue, setImportValue] = useState('');
   const [isHeaderVisible, setIsHeaderVisible] = useState(false);
+  const [message, setMessage] = useState('');
+  const [cardToDelete, setCardToDelete] = useState<number | null>(null);
+  const [cardToEdit, setCardToEdit] = useState<number | null>(null);
 
-  // 监听 list 变化，保存到 localStorage
+  // 监听 cards 变化，保存到 localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('hearthstone-stats', JSON.stringify(list));
+      localStorage.setItem('hearthstone-stats', JSON.stringify(cards));
     }
-  }, [list]);
-
-  // 计算单个职业的胜率
-  const calculateWinRate = (win: number, lose: number) => {
-    const total = win + lose;
-    if (total === 0) return '0%';
-    return `${((win / total) * 100).toFixed(1)}%`;
-  };
+  }, [cards]);
 
   // 计算总场数和总胜率
   const calculateTotalStats = () => {
-    const total = list.reduce((acc, curr) => acc + curr.win + curr.lose, 0);
-    const totalWins = list.reduce((acc, curr) => acc + curr.win, 0);
-    const winRate = total === 0 ? '0%' : `${((totalWins / total) * 100).toFixed(1)}%`;
-    return { total, winRate };
+    const totalStats = cards.reduce((acc, card) => {
+      const cardTotal = card.list.reduce((sum, item) => sum + item.win + item.lose, 0);
+      const cardWins = card.list.reduce((sum, item) => sum + item.win, 0);
+      return {
+        total: acc.total + cardTotal,
+        wins: acc.wins + cardWins
+      };
+    }, { total: 0, wins: 0 });
+
+    const winRate = totalStats.total === 0 ? '0%' : `${((totalStats.wins / totalStats.total) * 100).toFixed(1)}%`;
+    return { total: totalStats.total, winRate };
   };
 
   const { total, winRate } = calculateTotalStats();
 
-  // 处理胜场加减
-  const handleWinChange = (index: number, delta: number) => {
-    setList(prevList => {
-      const newList = [...prevList];
-      const newValue = Math.max(0, newList[index].win + delta); // 确保不会小于0
-      newList[index] = {
-        ...newList[index],
-        win: newValue
-      };
-      return newList;
-    });
-  };
-
-  // 处理负场加减
-  const handleLoseChange = (index: number, delta: number) => {
-    setList(prevList => {
-      const newList = [...prevList];
-      const newValue = Math.max(0, newList[index].lose + delta); // 确保不会小于0
-      newList[index] = {
-        ...newList[index],
-        lose: newValue
-      };
-      return newList;
-    });
-  };
-
-  /**
- * 将文本复制到剪贴板
- * @param text - 要复制的文本
- * @returns Promise<boolean> - 表示是否成功复制的 Promise
- */
-  async function copyToClipboard(text: string): Promise<boolean> {
-    if (navigator.clipboard && navigator.permissions) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch (err) {
-        console.error('Failed to copy text to clipboard:', err);
-        return false;
-      }
-    } else {
-      // Clipboard API 不可用时的回退方案
-      return fallbackCopyTextToClipboard(text);
-    }
-  }
-
-  /**
-  * 回退方案: 将文本复制到剪贴板
-  * @param text - 要复制的文本
-  * @returns boolean - 表示是否成功复制
-  */
-  function fallbackCopyTextToClipboard(text: string): boolean {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-
-    // 避免在 iOS 上的视觉跳动
-    textArea.style.position = 'fixed';
-    textArea.style.top = '0';
-    textArea.style.left = '0';
-    textArea.style.width = '2em';
-    textArea.style.height = '2em';
-    textArea.style.padding = '0';
-    textArea.style.border = 'none';
-    textArea.style.outline = 'none';
-    textArea.style.boxShadow = 'none';
-    textArea.style.background = 'transparent';
-
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-
-    let success = false;
-    try {
-      success = document.execCommand('copy');
-    } catch (err) {
-      console.error('Fallback: Oops, unable to copy', err);
-    }
-
-    document.body.removeChild(textArea);
-    return success;
-  }
-
   // 导出数据为 base64
   const exportData = () => {
-    const jsonString = JSON.stringify(list);
+    const compressedCards = compressData(cards);
+    const jsonString = JSON.stringify(compressedCards);
     const base64 = btoa(encodeURIComponent(jsonString));
     copyToClipboard(base64).then(success => {
       if (success) {
-        alert('数据已复制到剪贴板');
+        setMessage('数据已复制到剪贴板');
       } else {
-        alert('复制失败，请手动复制');
+        setMessage('复制失败，请手动复制');
       }
     });
   };
 
-  // 修改导入数据的函数，导入成功后也会保存到 localStorage
+  // 导入数据
   const importData = () => {
     try {
       const jsonString = decodeURIComponent(atob(importValue));
-      const newList = JSON.parse(jsonString);
-      
-      // 验证数据格式
-      if (!Array.isArray(newList) || !newList.every(item => 
-        typeof item === 'object' && 
-        'name' in item && 
-        'win' in item && 
-        'lose' in item
+      const compressedCards = JSON.parse(jsonString);
+
+      if (!Array.isArray(compressedCards) || !compressedCards.every(card =>
+        typeof card === 'object' &&
+        'n' in card &&
+        'h' in card &&
+        'l' in card &&
+        Array.isArray(card.l)
       )) {
         throw new Error('数据格式不正确');
       }
 
-      setList(newList);
+      const newCards = decompressData(compressedCards);
+      setCards(newCards);
       setImportValue('');
-      // localStorage 的保存由 useEffect 处理
-      alert('数据导入成功');
+      setMessage('数据导入成功');
     } catch (error) {
-      alert('导入失败：数据格式不正确');
+      setMessage('导入失败：数据格式不正确');
       console.error('Import error:', error);
     }
   };
 
   // 清除所有数据
   const clearAllData = () => {
-    if (window.confirm('确定要清除所有数据吗？此操作不可恢复！')) {
-      setList(initialList);
-      localStorage.removeItem('hearthstone-stats');
-      alert('数据已清除');
+    setCards([{
+      name: '默认卡组',
+      hero: '德鲁伊',
+      list: initialList
+    }]);
+    setMessage('数据已清除');
+  };
+
+  // 添加新卡组
+  const addNewCard = (cardName: string, cardHero: string) => {
+    setCards(prevCards => [...prevCards, {
+      name: cardName,
+      hero: cardHero,
+      list: initialList
+    }]);
+  };
+
+  // 删除卡组
+  const deleteCard = (index: number) => {
+    setCards(prevCards => prevCards.filter((_, i) => i !== index));
+    if (activeCardIndex >= index && activeCardIndex > 0) {
+      setActiveCardIndex(activeCardIndex - 1);
     }
+    setMessage('卡组已删除');
+  };
+
+  // 编辑卡组
+  const editCard = (index: number, newName: string, newHero: string) => {
+    setCards(prevCards => {
+      const newCards = [...prevCards];
+      newCards[index] = {
+        ...newCards[index],
+        name: newName,
+        hero: newHero
+      };
+      return newCards;
+    });
+    setMessage('卡组已更新');
   };
 
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <header className={`fixed top-0 left-0 right-0 flex flex-col sm:flex-row items-center justify-center gap-4 p-4 bg-gray-50/95 backdrop-blur-sm border-b shadow-sm z-10 transition-transform duration-300 ${isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}`}>
-        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-          <h2 className="text-lg font-medium whitespace-nowrap">导入数据</h2>
-          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-            <input 
-              type="text" 
-              value={importValue}
-              onChange={(e) => setImportValue(e.target.value)}
-              placeholder="粘贴 base64 数据"
-              className="w-full sm:w-64 px-3 py-1 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+    <>
+      <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 sm:p-20 font-[family-name:var(--font-geist-sans)]">
+        <header className={`fixed top-0 left-0 right-0 flex flex-col sm:flex-row items-center justify-center gap-6 p-6 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-lg z-10 transition-all duration-300 ${isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}`}>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
             <button
-              onClick={importData}
-              className="w-full sm:w-auto px-3 py-1 text-white bg-blue-500 rounded-md hover:bg-blue-600 transition-colors"
+              onClick={() => {
+                (document.getElementById('addCardModal') as HTMLDialogElement)?.showModal()
+              }}
+              className="w-full sm:w-auto px-4 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
             >
-              导入
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+              添加卡组
             </button>
           </div>
-        </div>
-        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-          <h2 className="text-lg font-medium whitespace-nowrap">导出数据</h2>
-          <button
-            onClick={exportData}
-            className="w-full sm:w-auto px-3 py-1 text-white bg-green-500 rounded-md hover:bg-green-600 transition-colors"
-          >
-            复制数据
-          </button>
-        </div>
-        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={clearAllData}
-            className="w-full sm:w-auto px-3 py-1 text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors"
-          >
-            清除数据
-          </button>
-        </div>
-      </header>
-      {/* 添加切换按钮 */}
-      <button
-        onClick={() => setIsHeaderVisible(!isHeaderVisible)}
-        className="fixed top-2 right-2 z-20 p-2 rounded-full bg-gray-50/95 backdrop-blur-sm border shadow-sm hover:bg-gray-100 transition-colors"
-        aria-label={isHeaderVisible ? '隐藏头部' : '显示头部'}
-      >
-        {isHeaderVisible ? (
-          <VerticalAlignTopOutlined className="text-lg" />
-        ) : (
-          <VerticalAlignBottomOutlined className="text-lg" />
-        )}
-      </button>
-      {/* 调整占位 div 的高度，只在 header 可见时显示 */}
-      <div className={`transition-all duration-300 ${isHeaderVisible ? 'h-32 sm:h-16' : 'h-0'}`}></div>
-      <main className="flex flex-row flex-wrap gap-[32px] row-start-2 items-start justify-center w-full">
-        {list.map((item, index) => (
-          <div key={item.name} className="flex items-center flex-col gap-3 p-4 border rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h1 className="text-lg font-medium">{item.name}</h1>
-            <div className="flex flex-col items-center gap-1">
-              <h2 className="text-sm font-medium text-gray-600">胜率</h2>
-              <p className="text-lg font-semibold text-blue-600">
-                {calculateWinRate(item.win, item.lose)}
-              </p>
-            </div>
-            <div className="flex flex-row gap-2 items-center">
-              <span className="text-sm">胜:</span>
-              <MinusCircleOutlined
-                className="cursor-pointer hover:text-blue-500"
-                onClick={() => handleWinChange(index, -1)}
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            <h2 className="text-lg font-semibold text-gray-700 whitespace-nowrap">导入数据</h2>
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+              <input
+                type="text"
+                value={importValue}
+                onChange={(e) => setImportValue(e.target.value)}
+                placeholder="粘贴 base64 数据"
+                className="w-full sm:w-72 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm"
               />
-              <p className="w-8 text-center">{item.win}</p>
-              <PlusCircleOutlined
-                className="cursor-pointer hover:text-blue-500"
-                onClick={() => handleWinChange(index, 1)}
-              />
-            </div>
-            <div className="flex flex-row gap-2 items-center">
-              <span className="text-sm">负:</span>
-              <MinusCircleOutlined
-                className="cursor-pointer hover:text-blue-500"
-                onClick={() => handleLoseChange(index, -1)}
-              />
-              <p className="w-8 text-center">{item.lose}</p>
-              <PlusCircleOutlined
-                className="cursor-pointer hover:text-blue-500"
-                onClick={() => handleLoseChange(index, 1)}
-              />
-            </div>
-            <div className="text-sm text-gray-500">
-              总场数: {item.win + item.lose}
+              <button
+                onClick={importData}
+                className="w-full sm:w-auto px-4 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+                导入
+              </button>
             </div>
           </div>
-        ))}
-      </main>
-      <footer className="fixed bottom-0 left-0 right-0 flex gap-[24px] flex-wrap items-center justify-center p-4 bg-gray-50/95 backdrop-blur-sm border-t shadow-lg z-10">
-        <div className="flex items-center gap-2">
-          <span className="text-gray-600">总场数:</span>
-          <span className="font-semibold">{total}</span>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            <h2 className="text-lg font-semibold text-gray-700 whitespace-nowrap">导出数据</h2>
+            <button
+              onClick={exportData}
+              className="w-full sm:w-auto px-4 py-2 text-white bg-green-500 rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+              复制数据
+            </button>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            <button
+              onClick={() => {
+                (document.getElementById('confirmModal') as HTMLDialogElement)?.showModal()
+              }}
+              className="w-full sm:w-auto px-4 py-2 text-white bg-red-500 rounded-lg hover:bg-red-600 transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              清除数据
+            </button>
+          </div>
+        </header>
+        {/* 添加切换按钮 */}
+        <button
+          onClick={() => setIsHeaderVisible(!isHeaderVisible)}
+          className="fixed top-4 right-4 z-20 p-2.5 rounded-full bg-white/80 backdrop-blur-md border border-gray-200 shadow-lg hover:bg-white hover:shadow-xl transition-all duration-300 flex items-center justify-center w-10 h-10"
+          aria-label={isHeaderVisible ? '隐藏头部' : '显示头部'}
+        >
+          <div className={`transform transition-transform duration-300 ${isHeaderVisible ? 'rotate-180' : ''}`}>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-5 h-5 text-gray-600"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </div>
+        </button>
+        {/* 调整占位 div 的高度，只在 header 可见时显示 */}
+        <div className={`transition-all duration-300 ${isHeaderVisible ? 'h-32 sm:h-16' : 'h-0'}`}></div>
+        <main className="flex flex-row flex-wrap gap-[32px] row-start-2 items-start justify-center w-full">
+          {cards.map((card, index) => (
+            <div
+              key={index}
+              className="card w-72 bg-base-100 shadow-xl hover:shadow-2xl transition-shadow relative group"
+            >
+              <div
+                className="card-body cursor-pointer"
+                onClick={() => {
+                  setActiveCardIndex(index);
+                  (document.getElementById('detail-drawer') as HTMLInputElement).checked = true;
+                }}
+              >
+                <div className="absolute top-2 right-2 flex gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCardToEdit(index);
+                      (document.getElementById('editCardModal') as HTMLDialogElement)?.showModal();
+                    }}
+                    className="btn btn-ghost btn-sm btn-circle text-info hover:bg-info/10"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCardToDelete(index);
+                      (document.getElementById('deleteCardModal') as HTMLDialogElement)?.showModal();
+                    }}
+                    className="btn btn-ghost btn-sm btn-circle text-error hover:bg-error/10"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+                <h2 className="card-title">
+                  {card.name}
+                  <div className="badge badge-primary">{HEAR_MAP[card.hero as keyof typeof HEAR_MAP]}</div>
+                </h2>
+                <div className="stats shadow">
+                  <div className="stat">
+                    <div className="stat-title">总场数</div>
+                    <div className="stat-value text-primary">
+                      {card.list.reduce((acc, curr) => acc + curr.win + curr.lose, 0)}
+                    </div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-title">胜率</div>
+                    <div className="stat-value text-secondary">
+                      {(() => {
+                        const total = card.list.reduce((acc, curr) => acc + curr.win + curr.lose, 0);
+                        const wins = card.list.reduce((acc, curr) => acc + curr.win, 0);
+                        return total === 0 ? '0%' : `${((wins / total) * 100).toFixed(1)}%`;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </main>
+        {/* 抽屉组件 */}
+        <div className="drawer drawer-end">
+          <input
+            id="detail-drawer"
+            type="checkbox"
+            className="drawer-toggle"
+          />
+          <div className="drawer-content">
+            {/* 抽屉内容 */}
+          </div>
+          <div className="drawer-side z-50">
+            <label
+              htmlFor="detail-drawer"
+              aria-label="close sidebar"
+              className="drawer-overlay"
+            ></label>
+            <div className="menu p-4 w-80 min-h-full bg-base-200 text-base-content">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">
+                  {cards[activeCardIndex]?.name} ({HEAR_MAP[cards[activeCardIndex]?.hero as keyof typeof HEAR_MAP]})
+                </h2>
+                <label
+                  htmlFor="detail-drawer"
+                  className="btn btn-ghost btn-sm"
+                >
+                  关闭
+                </label>
+              </div>
+              <Detail
+                setList={(newList) => {
+                  setCards(prevCards => {
+                    const newCards = [...prevCards];
+                    newCards[activeCardIndex] = {
+                      ...newCards[activeCardIndex],
+                      list: typeof newList === 'function' ? newList(newCards[activeCardIndex].list) : newList
+                    };
+                    return newCards;
+                  });
+                }}
+                list={cards[activeCardIndex]?.list || []}
+              />
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-gray-600">总胜率:</span>
-          <span className="font-semibold text-blue-600">{winRate}</span>
-        </div>
-      </footer>
-      <div className="h-20"></div>
-    </div>
+        <footer className="fixed bottom-0 left-0 right-0 flex gap-8 flex-wrap items-center justify-center p-6 bg-white/90 backdrop-blur-md border-t border-gray-200 shadow-lg z-10">
+          <div className="flex items-center gap-3 bg-gray-50/80 px-6 py-3 rounded-full border border-gray-200 shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+            </svg>
+            <div className="flex flex-col">
+              <span className="text-sm text-gray-500">总场数</span>
+              <span className="text-lg font-semibold text-gray-700">{total}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 bg-gray-50/80 px-6 py-3 rounded-full border border-gray-200 shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <div className="flex flex-col">
+              <span className="text-sm text-gray-500">总胜率</span>
+              <span className="text-lg font-semibold text-blue-600">{winRate}</span>
+            </div>
+          </div>
+        </footer>
+        <div className="h-20"></div>
+      </div>
+      <AddCardModal onConfirm={addNewCard} onCancel={() => { }} />
+      <EditCardModal
+        onConfirm={(newName, newHero) => {
+          if (cardToEdit !== null) {
+            editCard(cardToEdit, newName, newHero);
+            setCardToEdit(null);
+          }
+        }}
+        onCancel={() => setCardToEdit(null)}
+        currentName={cards[cardToEdit || 0]?.name || ''}
+        currentHero={cards[cardToEdit || 0]?.hero || ''}
+      />
+      <ConfirmModal
+        id="deleteCardModal"
+        title="确认删除"
+        content={`确定要删除卡组"${cards[cardToDelete || 0]?.name}"吗？此操作不可恢复！`}
+        onConfirm={() => {
+          if (cardToDelete !== null) {
+            deleteCard(cardToDelete);
+            setCardToDelete(null);
+          }
+        }}
+        onCancel={() => setCardToDelete(null)}
+      />
+      <ConfirmModal
+        id="confirmModal"
+        title="确认"
+        content="确定要清除所有数据吗？此操作不可恢复！"
+        onConfirm={clearAllData}
+        onCancel={() => { }}
+      />
+      <Toast setMessage={setMessage} message={message} />
+    </>
   );
 }
