@@ -90,50 +90,63 @@ interface Card {
   }[];
 }
 
+// 定义压缩数据的类型
+interface CompressedListItem {
+    n: string;  // name
+    w: number;  // win
+    l: number;  // lose
+}
+
+interface CompressedCard {
+    n: string;  // name
+    h: string;  // hero
+    l: CompressedListItem[];  // list
+}
+
 // 压缩数据
 const compressData = (cards: Card[]) => {
-  return cards.map(card => {
-    // 压缩每个卡组的数据
-    const compressedList = card.list
-      .map(item => {
-        // 只保存非零数据
-        if (item.win === 0 && item.lose === 0) return null;
-        return {
-          n: item.name, // 使用短键名
-          w: item.win,
-          l: item.lose
-        };
-      })
-      .filter(Boolean); // 移除空数据
+    return cards.map(card => {
+        // 压缩每个卡组的数据
+        const compressedList = card.list
+            .map(item => {
+                // 只保存非零数据
+                if (item.win === 0 && item.lose === 0) return null;
+                return {
+                    n: item.name, // 使用短键名
+                    w: item.win,
+                    l: item.lose
+                };
+            })
+            .filter((item): item is CompressedListItem => item !== null); // 移除空数据
 
-    return {
-      n: card.name, // 使用短键名
-      h: card.hero, // 使用短键名
-      l: compressedList // 使用短键名
-    };
-  });
+        return {
+            n: card.name, // 使用短键名
+            h: card.hero, // 使用短键名
+            l: compressedList // 使用短键名
+        };
+    });
 };
 
 // 解压数据
-const decompressData = (compressedCards: any[]): Card[] => {
-  return compressedCards.map(compressedCard => {
-    // 创建完整的列表，包含所有职业
-    const fullList = initialList.map(defaultItem => {
-      // 查找压缩数据中是否存在该职业的数据
-      const compressedItem = compressedCard.l.find((item: any) => item.n === defaultItem.name);
-      return compressedItem ? {
-        name: compressedItem.n,
-        win: compressedItem.w,
-        lose: compressedItem.l
-      } : defaultItem;
-    });
+const decompressData = (compressedCards: CompressedCard[]): Card[] => {
+    return compressedCards.map(compressedCard => {
+        // 创建完整的列表，包含所有职业
+        const fullList = initialList.map(defaultItem => {
+            // 查找压缩数据中是否存在该职业的数据
+            const compressedItem = compressedCard.l.find(item => item.n === defaultItem.name);
+            return compressedItem ? {
+                name: compressedItem.n,
+                win: compressedItem.w,
+                lose: compressedItem.l
+            } : defaultItem;
+        });
 
-    return {
-      name: compressedCard.n,
-      hero: compressedCard.h,
-      list: fullList
-    };
-  });
+        return {
+            name: compressedCard.n,
+            hero: compressedCard.h,
+            list: fullList
+        };
+    });
 };
 
 export default function Home() {
