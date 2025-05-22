@@ -7,20 +7,7 @@ import Toast from './components/toast'
 import Detail from './components/detail'
 import AddCardModal from './components/addCardModal'
 import EditCardModal from './components/editCardModal'
-
-export const HEAR_MAP = {
-  'dl': '德鲁伊',
-  'lr': '猎人',
-  'fs': '法师',
-  'ms': '牧师',
-  'sq': '圣骑士',
-  'zd': '盗贼',
-  'sm': '萨满',
-  'ss': '术士',
-  'zs': '战士',
-  'em': '恶魔猎手',
-  'sw': '死亡骑士',
-}
+import { HEAR_MAP } from './constants'
 
 const initialList = [
   {

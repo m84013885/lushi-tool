@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react';
-import { HEAR_MAP } from '@/app/page';
+import { HEAR_MAP } from '../constants';
 
 interface EditCardModalProps {
   onConfirm: (cardName: string, cardHero: string) => void;
