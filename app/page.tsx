@@ -430,8 +430,7 @@ export default function Home() {
               >
                 <div className="absolute top-2 right-2 flex gap-2">
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setCardToEdit(index);
                       (document.getElementById('editCardModal') as HTMLDialogElement)?.showModal();
                     }}
@@ -442,8 +441,7 @@ export default function Home() {
                     </svg>
                   </button>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setCardToDelete(index);
                       (document.getElementById('deleteCardModal') as HTMLDialogElement)?.showModal();
                     }}
@@ -454,8 +452,7 @@ export default function Home() {
                     </svg>
                   </button>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setShareCardIndex(index);
                       (document.getElementById('share-drawer') as HTMLInputElement).checked = true;
                     }}
