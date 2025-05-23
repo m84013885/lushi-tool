@@ -255,7 +255,7 @@ export default function Home() {
       setImportValue('');
       setMessage('短数据导入成功');
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   };
