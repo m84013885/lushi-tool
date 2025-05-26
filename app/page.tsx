@@ -240,18 +240,32 @@ export default function Home() {
   // 短数据导入
   const importShortData = () => {
     try {
-      const searchParams = new URLSearchParams(importValue);
-      const name = decodeURIComponent(searchParams.get('n') || '');
-      const hero = searchParams.get('z') || '';
-      const data = searchParams.get('data') || '';
-      if (!name || !hero || !data) throw new Error('参数不完整');
-      if (data.length !== initialList.length * 2) throw new Error('数据长度不符');
-      const list = initialList.map((item, idx) => {
-        const win = parseInt(data[idx * 2]) || 0;
-        const lose = parseInt(data[idx * 2 + 1]) || 0;
-        return { name: item.name, win, lose };
-      });
-      setCards([{ name, hero, list }]);
+      // 先尝试base64解码
+      const decodedString = atob(importValue);
+      
+      // 按 | 分割多个卡组数据
+      const cardDataArray = decodedString.split('|');
+      const newCards: Card[] = [];
+      
+      for (const cardDataString of cardDataArray) {
+        const searchParams = new URLSearchParams(cardDataString);
+        const name = decodeURIComponent(searchParams.get('n') || '');
+        const hero = searchParams.get('z') || '';
+        const data = searchParams.get('data') || '';
+        
+        if (!name || !hero || !data) throw new Error('参数不完整');
+        if (data.length !== initialList.length * 2) throw new Error('数据长度不符');
+        
+        const list = initialList.map((item, idx) => {
+          const win = parseInt(data[idx * 2]) || 0;
+          const lose = parseInt(data[idx * 2 + 1]) || 0;
+          return { name: item.name, win, lose };
+        });
+        
+        newCards.push({ name, hero, list });
+      }
+      
+      setCards(newCards);
       setImportValue('');
       setMessage('短数据导入成功');
       return true;
@@ -303,13 +317,15 @@ export default function Home() {
   };
 
   const exportShortData = () => {
-    const card = cards[activeCardIndex];
-    const name = encodeURIComponent(card.name);
-    const hero = card.hero; // 这里用英文缩写
-    // 胜负数据拼接
-    const data = card.list.map(item => `${item.win}${item.lose}`).join('');
-    const param = `n=${name}&z=${hero}&data=${data}`;
-    const base64 = btoa(param);
+    // 导出所有卡组数据
+    const allCardsData = cards.map(card => {
+      const name = encodeURIComponent(card.name);
+      const hero = card.hero;
+      const data = card.list.map(item => `${item.win}${item.lose}`).join('');
+      return `n=${name}&z=${hero}&data=${data}`;
+    }).join('|'); // 使用 | 分隔多个卡组
+    
+    const base64 = btoa(allCardsData);
     copyToClipboard(base64).then(success => {
       setMessage(success ? '短数据（base64）已复制到剪贴板' : '复制失败，请手动复制');
     });
